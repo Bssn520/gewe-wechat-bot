@@ -137,7 +137,7 @@ jobs:
         #   （用户名 = 阿里云账号全名，或 RAM 用户名去掉 @xxx.onaliyun.com；密码 = ACR 固定密码）
         # github.ref == refs/heads/main 在 PR（refs/pull/N/merge）与 dev 上都不成立。
         if: github.ref == 'refs/heads/main'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.IMAGE_REGISTRY }}
           username: ${{ secrets.REGISTRY_USERNAME || github.actor }}
