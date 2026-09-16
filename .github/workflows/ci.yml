@@ -145,7 +145,7 @@ jobs:
 
       - name: Docker meta
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE_NAME }}
           # 不再产出 dev 标签：dev 没有部署环境，推上去没人消费。
