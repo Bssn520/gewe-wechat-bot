@@ -1,0 +1,121 @@
+# 生产 / 类生产单机编排：app + worker（+ 一次性 migrate，可选 db）。
+#
+# 运行期只需要本文件与 .env：代码、migrations、entrypoint 都已打进镜像。
+# 目录约定（推荐）：
+#   <部署目录>/
+#   ├── docker-compose.yml
+#   ├── .env              # 600，含密钥
+#   ├── data/pgdata/      # 数据统一放这里（仅 with-db 自建库时有）
+#   └── images/           # 离线交付时的镜像 tar 留档（导完可删）
+#
+# PostgreSQL 默认**不启动**：用托管库/独立实例时把连接信息写进 .env 的 DB_*。
+# 单机自建库才加 --profile with-db（数据落在 ./data/pgdata，可用 PGDATA_DIR 改）。
+#
+# 镜像由 CI 构建推送（.github/workflows/ci.yml）到 GHCR，默认值即
+#   ghcr.io/bssn520/gewe-backend:main
+# 服务器首次拉取前要先登录 GHCR（私有包，需 read:packages 的 PAT）：
+#   echo "$GITHUB_PAT" | docker login ghcr.io -u Bssn520 --password-stdin
+# 换标签 / 换 registry 用变量覆盖：
+#   IMAGE_TAG=sha-af0ed6c docker compose up -d app worker
+#   IMAGE_NAME=<registry>/<repo> IMAGE_TAG=main docker compose up -d migrate app worker
+# 本机调试用本地镜像：IMAGE_NAME=gewe-backend IMAGE_TAG=local（记得加 --pull never）
+# 改用阿里云 ACR 的说明见 docs/environments.md 文末附录。
+#
+# ⚠️ worker 必须单实例，禁止 `--scale worker=2`，也禁止滚动更新：
+#   旧实例未退、新实例已起时会拿不到 advisory lock 而 exit(1)。
+#   升级 worker 用「先 stop 再 up」：
+#     docker compose stop worker && docker compose up -d worker
+#   详见 docs/architecture.md §4.3。
+
+# 固定 compose 项目名，避免目录改名后容器/网络/卷名跟着变（卷名变了 = 数据"消失"）。
+name: gewe
+
+x-app: &app_base
+  image: ${IMAGE_NAME:-${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_REPOSITORY:-bssn520/gewe-backend}}:${IMAGE_TAG:-main}
+  pull_policy: always
+  # .env 可选：支持「平台注入环境变量、不在服务器落盘完整 .env」的做法。
+  # 两者都没有时进程会在启动阶段 fail-fast，不会静默用占位配置跑起来。
+  env_file:
+    - path: .env
+      required: false
+
+services:
+  # 可选：单机自建 PostgreSQL，用 profile 隔离，默认**不启动**。
+  # 用托管库/独立实例时不要带 --profile：连接信息走 DB_*，DB_HOST 指外部地址。
+  # 单机部署（本机没有任何现成 PG）才启用：
+  #   docker compose --profile with-db up -d
+  # 此时 .env 里设 DB_HOST=db（compose 内部 DNS），DB_NAME/DB_USER/DB_PASSWORD 与下方一致。
+  # 内存小的机器（如 2G）注意调小 shared_buffers，已在此给出保守默认。
+  db:
+    image: postgres:16
+    profiles: ["with-db"]
+    environment:
+      POSTGRES_USER: ${DB_USER:-gewe}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD 必填}
+      POSTGRES_DB: ${DB_NAME:-gewe_prod}
+      # 小内存机器：默认 128MB shared_buffers 偏高
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    command:
+      - postgres
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - max_connections=50
+      - -c
+      - work_mem=4MB
+    volumes:
+      # 数据统一放 compose 文件同级的 data/ 下（可用 PGDATA_DIR 覆盖为绝对路径）。
+      # 用具名卷的话数据在 /var/lib/docker/volumes 下，名字由项目名派生，
+      # 备份/迁移都不好找；绑到已知目录后，备份 = 打包 data/ 一个目录。
+      - ${PGDATA_DIR:-./data/pgdata}:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-gewe} -d ${DB_NAME:-gewe_prod}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  # 一次性迁移角色：跑完即退出，app / worker 等它成功后再起。
+  # 这样迁移只执行一次，也不会让每个应用副本各自抢跑。
+  migrate:
+    <<: *app_base
+    command: ["migrate"]
+    restart: "no"
+
+  app:
+    <<: *app_base
+    command: ["app"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    restart: unless-stopped
+    # /api/v1/health 不查库，测的是进程与 event loop 能否推进，用作 liveness 正合适。
+    # 依赖就绪不在容器内判断：数据库连不上时进程启动阶段就会失败退出。
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  worker:
+    <<: *app_base
+    command: ["worker"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    # 优雅停机：SIGTERM 后停止认领，等在途 LLM 与当前发送 HTTP 结束再退。
+    stop_grace_period: 30s
+    # 显式声明副本数，防止误加。
+    deploy:
+      replicas: 1

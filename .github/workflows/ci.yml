@@ -1,0 +1,208 @@
+name: CI
+
+on:
+  push:
+    # dev 也触发，但**不推镜像**：镜像只在 main 发布（见 docker job）。
+    # dev/PR 跑门禁（lint/typecheck/test/audit/bandit + 构建校验）是为了一坏就报，
+    # 而不是攒到合 main 才发现。若将来 dev push 的构建开销不可接受，
+    # 可从本列表移除 dev，只保留 main + pull_request。
+    branches: [main, dev]
+    # 纯文档变更不触发全量 CI（PR 仍全量检查）
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+  pull_request:
+    branches: [main, dev]
+  workflow_dispatch:
+
+# 同一分支连续 push 自动取消旧跑
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.13"
+  # 默认推 GHCR（零配置，用内置 GITHUB_TOKEN）。镜像路径必须全小写。
+  # 要换阿里云 ACR 等外部 registry：改这两个 Variable，并配 REGISTRY_USERNAME /
+  # REGISTRY_PASSWORD 两个 Secret（见 docs/environments.md 文末附录）。
+  IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}
+  IMAGE_REPOSITORY: ${{ vars.IMAGE_REPOSITORY || 'bssn520/gewe-backend' }}
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    # 测试需要真 PostgreSQL：conftest 只 Tortoise.init 不建表，且
+    # tests/conftest.py 里的 db fixture 会执行 TRUNCATE，必须让迁移先跑过。
+    # 项目只用 PostgreSQL（docs/environments.md），因此这里不用 SQLite 替身。
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: gewe_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      APP_ENV: test
+      DB_HOST: 127.0.0.1
+      DB_PORT: "5432"
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: gewe_test
+      GEWE_TOKEN: test-token
+      WEBHOOK_SECRET: test-secret
+      GEWE_ALLOWLIST: "wxid_self:wxid_friend1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Apply migrations
+        run: uv run aerich upgrade
+
+      - name: Ruff check
+        run: uv run ruff check .
+
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+      - name: Type check (mypy)
+        run: uv run mypy app
+
+      - name: Run tests
+        # 覆盖率门槛（--cov-fail-under=85）写在 pyproject 的 addopts，与 make test 同源
+        run: uv run pytest -v
+
+  security:
+    name: Dependency audit & SAST
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Audit dependencies (pip-audit)
+        # pip-audit 不原生支持 uv.lock：导出 requirements 后审计。
+        # --disable-pip 避免审计时另建 venv（CI 上 ensurepip 会失败），
+        # --no-deps 直接用导出的完整清单，不再解析依赖树。
+        run: |
+          uv export --format requirements.txt -o requirements-audit.txt
+          uv run pip-audit --disable-pip --no-deps -r requirements-audit.txt
+
+      - name: SAST scan (bandit)
+        # -c pyproject.toml：bandit 不会自动发现 pyproject 里的 [tool.bandit]
+        run: uv run bandit -r app -q -c pyproject.toml
+
+  docker:
+    name: Build image (push on main only)
+    needs: [lint-and-test, security]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # 仅 GHCR 需要 packages:write；用 ACR 时可删掉这一行
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Image name
+        run: echo "IMAGE_NAME=${IMAGE_REGISTRY}/${IMAGE_REPOSITORY}" >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to registry
+        # 只有 main 才推送，因此也只有 main 需要登录。
+        # GHCR（默认）：下面两个 Secret 不配，自动回退到内置 GITHUB_TOKEN，零配置。
+        # 阿里云 ACR：在 repo Secrets 配 REGISTRY_USERNAME / REGISTRY_PASSWORD
+        #   （用户名 = 阿里云账号全名，或 RAM 用户名去掉 @xxx.onaliyun.com；密码 = ACR 固定密码）
+        # github.ref == refs/heads/main 在 PR（refs/pull/N/merge）与 dev 上都不成立。
+        if: github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.IMAGE_REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME || github.actor }}
+          password: ${{ secrets.REGISTRY_PASSWORD || secrets.GITHUB_TOKEN }}
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          # 不再产出 dev 标签：dev 没有部署环境，推上去没人消费。
+          # PR / dev 仍会走到这里，但只用于本地构建打名与 Trivy 扫描。
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          # 先 load 到本地，供 Trivy 扫描；扫过再决定是否推送。
+          # 这里恒为 false —— 推送统一放在 Trivy 之后的 Push image 步骤，
+          # 保证「扫出高危就不出镜像」。
+          push: false
+          load: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+          format: table
+          # 扫出 HIGH/CRITICAL 直接失败，阻断上线
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+
+      - name: Push image
+        # 只从 main 发布镜像：线上只跑 main，dev 无部署环境。
+        # PR 与 dev push 到此为止（只构建 + 扫描，验证 Dockerfile 不坏）。
+        if: github.ref == 'refs/heads/main'
+        run: |
+          while IFS= read -r tag; do
+            [ -n "$tag" ] && docker push "$tag"
+          done <<< "${{ steps.meta.outputs.tags }}"
+
+      - name: Image summary
+        if: github.ref == 'refs/heads/main'
+        run: |
+          {
+            echo "### Docker image"
+            echo ""
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+            echo ""
+            echo "#### 服务器拉取"
+            echo ""
+            echo '```bash'
+            echo "docker pull ${IMAGE_NAME}:${{ github.ref_name }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,29 @@
+repos:
+  # ruff 用本地 uv 钩子：始终与 uv.lock 锁定的版本一致，避免与 CI 版本漂移
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff
+        entry: uv run ruff check --fix
+        language: system
+        types: [python]
+      - id: ruff-format
+        name: ruff-format
+        entry: uv run ruff format
+        language: system
+        types: [python]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      # 提示词正文逐字移植自上游项目（决策 0014）：行尾空白与末尾换行是文案本身，
+      # 改动等于变更模型实际收到的指令，故排除 prompts / skills / 四个业务 Agent。
+      - id: trailing-whitespace
+        exclude: ^app/agno/(prompts|skills|agents/(sales|tongue|palm|self_test)\.py)
+      - id: end-of-file-fixer
+        exclude: ^app/agno/(prompts|skills|agents/(sales|tongue|palm|self_test)\.py)
+      - id: check-json
+      - id: check-toml
+      - id: check-yaml
+      - id: check-added-large-files
+      - id: detect-private-key

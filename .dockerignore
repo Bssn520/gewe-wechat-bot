@@ -1,0 +1,53 @@
+# =============================================================================
+# Docker build context 黑名单。
+# 镜像实际内容以 Dockerfile 显式 COPY 为准；本文件只防止大文件与密钥进入 context。
+# 与 .gitignore 相互独立。
+# =============================================================================
+
+# ----- 密钥与本地环境（禁止进 context）-----
+# 镜像不需要任何 .env：运行期由 compose env_file / 平台注入提供。
+.env
+.env.*
+.venv
+.temp
+
+# ----- 版本库 / CI / IDE -----
+.git
+.github
+.idea
+.vscode
+*.iml
+.DS_Store
+
+# ----- 本地编排与工具（镜像内不用）-----
+Makefile
+docker-compose.yml
+docker-compose.*.yml
+
+# ----- 文档与 agent 规范 -----
+docs
+.agents
+CONTEXT.md
+CLAUDE.md
+
+# ----- 测试与缓存 -----
+tests
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.coverage
+htmlcov
+__pycache__
+**/__pycache__
+*.py[cod]
+*.egg-info
+build
+dist
+wheels
+
+# ----- 杂项本地文件 -----
+*.db
+*.sqlite3
+*.log
+*.md
+!README.md

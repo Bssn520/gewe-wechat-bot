@@ -1,0 +1,54 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+.env.development
+.env.dev
+.env.test
+.env.prod
+!.env.example
+!.env.dev.example
+!.env.test.example
+!.env.prod.example
+
+# macOS
+.DS_Store
+*.swp
+*.swo
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Logs
+logs/
+*.log
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Research
+.temp/
+
+# 本地/部署数据（compose 的 db 数据目录、离线镜像 tar、pg_dump 备份）
+data/
+pgdata/
+
+# env 转换/编辑前备份（gitignored，本地回滚用，勿提交）
+.env*.bak-inline

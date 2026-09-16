@@ -1,0 +1,86 @@
+[project]
+name = "gewe-backend"
+version = "0.1.0"
+description = "GeWe auto-reply backend (FastAPI)"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.13"
+dependencies = [
+    "aerich>=0.9.2",
+    "agno==3.0.9",
+    "asyncpg>=0.31.0",
+    "fastapi>=0.124",
+    "gunicorn>=26.2.0",
+    "httpx>=0.28",
+    "openai>=3.13.0",
+    "orjson>=3.10",
+    "pydantic>=2.13.5",
+    "pydantic-settings>=2.12",
+    "python-dotenv>=1.2",
+    "structlog>=25.1",
+    "tortoise-orm>=0.25.4",
+    "uvicorn[standard]>=0.38",
+]
+
+[dependency-groups]
+dev = [
+    "bandit>=1.9.4",
+    "mypy>=2.3.0",
+    "pip-audit>=2.10.1",
+    "pre-commit>=4.0",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.8.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.aerich]
+tortoise_orm = "app.core.config.TORTOISE_ORM"
+location = "./migrations"
+src_folder = "./."
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+# migrations 由 aerich 生成（含不可控长度的 SQL 串，如复合索引），不参与 lint/format；
+# 迁移内容靠「生成后人工 review」把关，不靠 lint。
+extend-exclude = ["migrations"]
+# pre-commit 把显式文件路径传给 ruff，此时 extend-exclude 默认不生效；
+# 必须打开 force-exclude，否则生成的迁移仍会让钩子失败。
+force-exclude = true
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "SIM", "Q"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.mypy]
+python_version = "3.13"
+strict = false
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "integration: hits independent gewe_test postgres",
+]
+# 覆盖率门槛与 CI 一致；用 make test 跑同一套参数。
+addopts = "--cov=app --cov-report=term-missing --cov-fail-under=85"
+
+[tool.bandit]
+exclude_dirs = ["tests", "migrations"]
+# B104：HOST 默认 0.0.0.0 是容器部署配置，不是缺陷
+# B311：发送间隔抖动不用于安全目的，无需密码学随机源
+# B608：仅剩两处「静态 SQL 片段 + 拼接」，值全部走 $N 占位符，无插值
+#       （app/crud/inbox.py 认领语句）。关闭本规则后新增 SQL 拼接不会被拦，
+#       因此新增裸 SQL 时必须人工确认走占位符。
+skips = ["B104", "B311", "B608"]

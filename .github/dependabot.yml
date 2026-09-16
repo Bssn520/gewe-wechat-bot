@@ -1,0 +1,22 @@
+# 依赖自动升级 PR（Dependabot）
+# pip ecosystem 支持 uv.lock；dev 依赖分组收敛 PR 数量。
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      dev-deps:
+        patterns: ["*"]
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
