@@ -1,6 +1,6 @@
 # ---- Builder ----
 # 用 Docker Hub 官方 Python 镜像 + pip 装 uv：构建机不一定能拉 ghcr.io。
-FROM python:3.13-slim-bookworm AS builder
+FROM python:3.14-slim-bookworm AS builder
 
 # 可选：把 PyPI 指向国内镜像。默认留空 = 走官方源（CI 在境外不受影响）。
 # 在 pypi.org 不可达的构建机上构建时传入，例如：
@@ -20,7 +20,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 # ---- Runtime ----
-FROM python:3.13-slim-bookworm
+FROM python:3.14-slim-bookworm
 
 # 日志不缓冲（docker logs 实时可读）；不写 .pyc（容器内无需字节码缓存）
 ENV PYTHONUNBUFFERED=1 \
