@@ -1,22 +1,28 @@
-# 依赖自动升级 PR（Dependabot）
-# pip ecosystem 支持 uv.lock；dev 依赖分组收敛 PR 数量。
+# Dependabot：安全补丁自动开 PR；版本升级只对 GitHub Actions 做周更。
+# pip 不跑常规升版（`open-pull-requests-limit: 0`），CVE 仍走 Dependabot security updates。
+# Docker 忽略大版本，避免 python:3.13-slim 被升到 3.14。
 version: 2
 updates:
   - package-ecosystem: pip
     directory: "/"
     schedule:
       interval: weekly
-    groups:
-      dev-deps:
-        patterns: ["*"]
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 0
 
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns: ["*"]
 
   - package-ecosystem: docker
     directory: "/"
     schedule:
       interval: weekly
+    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
