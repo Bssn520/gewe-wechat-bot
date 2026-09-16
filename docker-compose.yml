@@ -12,13 +12,13 @@
 # 单机自建库才加 --profile with-db（数据落在 ./data/pgdata，可用 PGDATA_DIR 改）。
 #
 # 镜像由 CI 构建推送（.github/workflows/ci.yml）到 GHCR，默认值即
-#   ghcr.io/bssn520/gewe-backend:main
+#   ghcr.io/bssn520/gewe-wechat-bot:main
 # 服务器首次拉取前要先登录 GHCR（私有包，需 read:packages 的 PAT）：
 #   echo "$GITHUB_PAT" | docker login ghcr.io -u Bssn520 --password-stdin
 # 换标签 / 换 registry 用变量覆盖：
 #   IMAGE_TAG=sha-af0ed6c docker compose up -d app worker
 #   IMAGE_NAME=<registry>/<repo> IMAGE_TAG=main docker compose up -d migrate app worker
-# 本机调试用本地镜像：IMAGE_NAME=gewe-backend IMAGE_TAG=local（记得加 --pull never）
+# 本机调试用本地镜像：IMAGE_NAME=gewe-wechat-bot IMAGE_TAG=local（记得加 --pull never）
 # 改用阿里云 ACR 的说明见 docs/environments.md 文末附录。
 #
 # ⚠️ worker 必须单实例，禁止 `--scale worker=2`，也禁止滚动更新：
@@ -31,7 +31,7 @@
 name: gewe
 
 x-app: &app_base
-  image: ${IMAGE_NAME:-${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_REPOSITORY:-bssn520/gewe-backend}}:${IMAGE_TAG:-main}
+  image: ${IMAGE_NAME:-${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_REPOSITORY:-bssn520/gewe-wechat-bot}}:${IMAGE_TAG:-main}
   pull_policy: always
   # .env 可选：支持「平台注入环境变量、不在服务器落盘完整 .env」的做法。
   # 两者都没有时进程会在启动阶段 fail-fast，不会静默用占位配置跑起来。

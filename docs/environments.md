@@ -91,14 +91,14 @@ CI 的 login 步骤在未配置 `REGISTRY_USERNAME` / `REGISTRY_PASSWORD` 时，
 **镜像只在 `main` 推送时发布**（线上只跑 main，dev 没有部署环境，推上去没人消费）。推 `main` 后产出：
 
 ```text
-ghcr.io/bssn520/gewe-backend:main      # 分支名
-ghcr.io/bssn520/gewe-backend:latest
-ghcr.io/bssn520/gewe-backend:sha-af0ed6c   # 不可变，回滚用
+ghcr.io/bssn520/gewe-wechat-bot:main      # 分支名
+ghcr.io/bssn520/gewe-wechat-bot:latest
+ghcr.io/bssn520/gewe-wechat-bot:sha-af0ed6c   # 不可变，回滚用
 ```
 
 `dev` push 与 PR 都会跑完整 CI（含构建镜像 + Trivy 扫描），但**不推送**——目的是尽早发现坏构建，而不是攒到合 main 才发现。
 
-> 路径必须全小写（GHCR 限制），仓库名 `Company-Gewe-AutoReply` 与镜像名 `gewe-backend` 不必一致。
+> 路径必须全小写（GHCR 限制），仓库名 `gewe-wechat-bot` 与镜像名 `gewe-wechat-bot` 不必一致。
 
 **包是私有的**：镜像继承仓库可见性。仓库是 private，所以包也是 private，服务器拉取前必须登录。
 
@@ -140,15 +140,15 @@ echo "$GITHUB_PAT" | docker login ghcr.io -u Bssn520 --password-stdin
 ```bash
 # ① 构建（⚠️ 必须指定服务器架构，见下方「架构必须匹配」）
 make docker-build PLATFORM=linux/amd64    # 服务器是 x86_64 时；Apple Silicon 本机默认是 arm64
-make image-save                           # 导出 dist/gewe-backend-local.tar.gz（约 79MB）
+make image-save                           # 导出 dist/gewe-wechat-bot-local.tar.gz（约 79MB）
 
 # ② 传到服务器
-scp dist/gewe-backend-local.tar.gz <user>@<ecs>:/opt/gewe-backend/
+scp dist/gewe-wechat-bot-local.tar.gz <user>@<ecs>:/opt/gewe-wechat-bot/
 
 # ③ 服务器上导回并起服务
-cd /opt/gewe-backend       # compose 文件所在目录
-make image-load            # 或：gunzip -c gewe-backend-local.tar.gz | docker load
-IMAGE_NAME=gewe-backend IMAGE_TAG=local \
+cd /opt/gewe-wechat-bot       # compose 文件所在目录
+make image-load            # 或：gunzip -c gewe-wechat-bot-local.tar.gz | docker load
+IMAGE_NAME=gewe-wechat-bot IMAGE_TAG=local \
   docker compose --profile with-db up -d --pull never migrate app worker
 ```
 
@@ -160,15 +160,15 @@ IMAGE_NAME=gewe-backend IMAGE_TAG=local \
 > ```
 >
 > 用 `make docker-build PLATFORM=linux/amd64`（等价 `docker buildx build --platform linux/amd64 --load`）。导出前可用
-> `docker image inspect gewe-backend:local --format '{{.Architecture}}/{{.Os}}'` 确认。**CI 不受影响**——GitHub 的 runner 本身就是 amd64。
+> `docker image inspect gewe-wechat-bot:local --format '{{.Architecture}}/{{.Os}}'` 确认。**CI 不受影响**——GitHub 的 runner 本身就是 amd64。
 
-**`--pull never` 是必须的**：`pull_policy: always` 会去 registry 找 `gewe-backend:local` 这个不存在的仓库，直接失败。离线场景一定要显式跳过拉取。
+**`--pull never` 是必须的**：`pull_policy: always` 会去 registry 找 `gewe-wechat-bot:local` 这个不存在的仓库，直接失败。离线场景一定要显式跳过拉取。
 
 镜像从 CI 产物拿也可以（省去本地构建，且天然是 amd64）：
 
 ```bash
-docker pull ghcr.io/bssn520/gewe-backend:main   # 在有网的机器上
-docker save ghcr.io/bssn520/gewe-backend:main | gzip -1 > gewe-main.tar.gz
+docker pull ghcr.io/bssn520/gewe-wechat-bot:main   # 在有网的机器上
+docker save ghcr.io/bssn520/gewe-wechat-bot:main | gzip -1 > gewe-main.tar.gz
 ```
 
 **代价**：每次发布要手动传一次 tar。若发布频繁，用下面方案 2。
@@ -181,7 +181,7 @@ docker save ghcr.io/bssn520/gewe-backend:main | gzip -1 > gewe-main.tar.gz
 - **阿里云 ACR 个人版**：免费，但要求账号是**个人类型**实名认证且由**主账号**创建（见文末附录）。
 - **华为云 SWR**：同类选项。
 
-配法（以 TCR 为例）：在 GitHub 配 `IMAGE_REGISTRY=ccr.ccs.tencentyun.com`、`IMAGE_REPOSITORY=<命名空间>/gewe-backend`，以及 `REGISTRY_USERNAME` / `REGISTRY_PASSWORD` 两个 Secret。CI 会自动推到这里，服务器直接拉。
+配法（以 TCR 为例）：在 GitHub 配 `IMAGE_REGISTRY=ccr.ccs.tencentyun.com`、`IMAGE_REPOSITORY=<命名空间>/gewe-wechat-bot`，以及 `REGISTRY_USERNAME` / `REGISTRY_PASSWORD` 两个 Secret。CI 会自动推到这里，服务器直接拉。
 
 #### 方案 3：ghcr 第三方加速（不建议用于生产）
 
@@ -223,7 +223,7 @@ docker compose up -d migrate app worker
 
 > 服务器拉不到 `ghcr.io` 时（国内常见），改用「服务器访问不了 GitHub / ghcr.io 怎么办」一节的**离线交付**或**国内 registry** 方案。
 
-`docker-compose.yml` 默认镜像即 `ghcr.io/bssn520/gewe-backend:main`，无需传 `IMAGE_NAME`。要临时换标签或镜像：
+`docker-compose.yml` 默认镜像即 `ghcr.io/bssn520/gewe-wechat-bot:main`，无需传 `IMAGE_NAME`。要临时换标签或镜像：
 
 ```bash
 IMAGE_TAG=sha-af0ed6c docker compose up -d app worker
@@ -291,7 +291,7 @@ docker compose --profile with-db up -d db
 IMAGE_TAG=sha-af0ed6c docker compose up -d app worker
 ```
 
-> 本地镜像 / 离线交付的镜像要加 `--pull never`：`IMAGE_NAME=gewe-backend IMAGE_TAG=local docker compose up -d --pull never app`。
+> 本地镜像 / 离线交付的镜像要加 `--pull never`：`IMAGE_NAME=gewe-wechat-bot IMAGE_TAG=local docker compose up -d --pull never app`。
 
 #### 两个 env 陷阱（都踩过）
 
@@ -337,13 +337,13 @@ CI 与 compose 都按变量取值，**换 registry 不用改代码**，只改配
 
 1. 主账号登录 → 容器镜像服务控制台 → 实例列表 → 创建个人版 → 区域选 **华北2（北京）**。地域创建后不能改，一个账号只能有一个个人版实例。
 2. 「仓库管理 → 访问凭证」→ 设置固定密码（个人版不支持临时 Token）。
-3. 建命名空间（如 `trsb`）与私有仓库（如 `gewe-backend`）。
+3. 建命名空间（如 `trsb`）与私有仓库（如 `gewe-wechat-bot`）。
 4. 仓库 Settings → Secrets and variables → Actions 配：
 
 | 类型 | 名称 | 值 |
 |------|------|-----|
 | Variable | `IMAGE_REGISTRY` | `crpi-xxxx.cn-beijing.personal.cr.aliyuncs.com`（**公网**域名，CI 在境外只能走公网） |
-| Variable | `IMAGE_REPOSITORY` | `trsb/gewe-backend` |
+| Variable | `IMAGE_REPOSITORY` | `trsb/gewe-wechat-bot` |
 | Secret | `REGISTRY_USERNAME` | 主账号全名，或 RAM 用户名去掉 `@xxx.onaliyun.com` |
 | Secret | `REGISTRY_PASSWORD` | 固定密码 |
 
@@ -351,7 +351,7 @@ CI 与 compose 都按变量取值，**换 registry 不用改代码**，只改配
 
 ```bash
 docker login --username=<登录名> crpi-xxxx-vpc.cn-beijing.personal.cr.aliyuncs.com
-IMAGE_NAME=crpi-xxxx-vpc.cn-beijing.personal.cr.aliyuncs.com/trsb/gewe-backend \
+IMAGE_NAME=crpi-xxxx-vpc.cn-beijing.personal.cr.aliyuncs.com/trsb/gewe-wechat-bot \
 IMAGE_TAG=main docker compose up -d migrate app worker
 ```
 

@@ -1,4 +1,4 @@
-# gewe-backend
+# gewe-wechat-bot
 
 GeWe 多微信账号自动回复服务。FastAPI + Tortoise ORM + PostgreSQL。
 

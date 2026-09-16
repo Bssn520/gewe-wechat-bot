@@ -1,5 +1,5 @@
 [project]
-name = "gewe-backend"
+name = "gewe-wechat-bot"
 version = "0.1.0"
 description = "GeWe auto-reply backend (FastAPI)"
 readme = "README.md"

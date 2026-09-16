@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     )
 
     # --- 应用 ---
-    APP_NAME: str = "gewe-backend"
+    APP_NAME: str = "gewe-wechat-bot"
     APP_VERSION: str = "0.1.0"
     APP_ENV: Literal["dev", "test", "prod"] = "dev"
     DEBUG: bool = True

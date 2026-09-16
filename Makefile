@@ -52,7 +52,7 @@ precommit:
 # CI 在 GitHub 的 amd64 runner 上构建，默认就是 linux/amd64。
 PLATFORM ?=
 docker-build:
-	docker buildx build $(if $(PLATFORM),--platform $(PLATFORM),) -t gewe-backend:local --load .
+	docker buildx build $(if $(PLATFORM),--platform $(PLATFORM),) -t gewe-wechat-bot:local --load .
 
 # 拉起 app + worker（会先跑一次性 migrate）
 docker-up:
@@ -65,18 +65,18 @@ docker-down:
 # 离线交付：导出镜像为 tar.gz / 在服务器上导回。
 # 用于「服务器访问不了 registry」的场景 —— 全程不依赖服务器联网拉镜像。
 #   make docker-build PLATFORM=linux/amd64   # 必须匹配服务器架构
-#   make image-save                          # 导出到 dist/gewe-backend-local.tar.gz
-#   scp dist/gewe-backend-local.tar.gz <server>:/opt/gewe-backend/
-#   服务器：make image-load && IMAGE_NAME=gewe-backend IMAGE_TAG=local \
+#   make image-save                          # 导出到 dist/gewe-wechat-bot-local.tar.gz
+#   scp dist/gewe-wechat-bot-local.tar.gz <server>:/opt/gewe-wechat-bot/
+#   服务器：make image-load && IMAGE_NAME=gewe-wechat-bot IMAGE_TAG=local \
 #           docker compose up -d --pull never migrate app worker
 image-save:
 	@mkdir -p dist
-	docker save gewe-backend:local | gzip -1 > dist/gewe-backend-local.tar.gz
-	@echo "架构: $$(docker image inspect gewe-backend:local --format '{{.Architecture}}/{{.Os}}')"
-	@ls -lh dist/gewe-backend-local.tar.gz
+	docker save gewe-wechat-bot:local | gzip -1 > dist/gewe-wechat-bot-local.tar.gz
+	@echo "架构: $$(docker image inspect gewe-wechat-bot:local --format '{{.Architecture}}/{{.Os}}')"
+	@ls -lh dist/gewe-wechat-bot-local.tar.gz
 
 image-load:
-	gunzip -c dist/gewe-backend-local.tar.gz | docker load
+	gunzip -c dist/gewe-wechat-bot-local.tar.gz | docker load
 
 # 从存档切换运行中的 .env（不会覆盖已有 .env.dev / .env.test / .env.prod）
 env-dev:

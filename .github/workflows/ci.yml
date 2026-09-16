@@ -26,7 +26,7 @@ env:
   # 要换阿里云 ACR 等外部 registry：改这两个 Variable，并配 REGISTRY_USERNAME /
   # REGISTRY_PASSWORD 两个 Secret（见 docs/environments.md 文末附录）。
   IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}
-  IMAGE_REPOSITORY: ${{ vars.IMAGE_REPOSITORY || 'bssn520/gewe-backend' }}
+  IMAGE_REPOSITORY: ${{ vars.IMAGE_REPOSITORY || 'bssn520/gewe-wechat-bot' }}
 
 jobs:
   lint-and-test:
