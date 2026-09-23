@@ -128,7 +128,7 @@ jobs:
         run: echo "IMAGE_NAME=${IMAGE_REGISTRY}/${IMAGE_REPOSITORY}" >> "$GITHUB_ENV"
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to registry
         # 只有 main 才推送，因此也只有 main 需要登录。
